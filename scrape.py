@@ -37,7 +37,6 @@ class Story(object):
         self.author_home = self.meta.find('span',{'class' : 'b-sli-author'}).find('a')['href']
         # number of pages
         self.page_count = get_max_pages(self.link,suffix='')
-        #print(self.page_count)
         # rating as float
         self.rating_as_float = 0.5 * math.ceil(2.0 * float(self.rating))
         # fetch content
@@ -124,18 +123,23 @@ def doGetStories(link, cat):
     # find all matching tags
     tags = soup.findAll('div', { 'class' : 'b-sl-item-r'})
     for tag in tags:
-        story = Story(tag)
-        #print('[{0}]'.format(story))
-        #_story = get_contents(story.link)
-        #print('[{0}]'.format(story))
-        # append to list
-        #stories.append(story)
-        #_story = get_contents(link)
+        title = tag.find('h3').string.replace('/','')
+        filename = '{0}/{1}.html'.format(cat,title.replace('/','').replace("'",'').replace('"','').replace('?',''))
+        if not os.path.exists(filename):
+            
+            
+            story = Story(tag)
+            #print('[{0}]'.format(story))
+            #_story = get_contents(story.link)
+            #print('[{0}]'.format(story))
+            # append to list
+            #stories.append(story)
+            #_story = get_contents(link)
 
-        #print('[{0}]'.format(_story.title))
-        # write contents to file
-        
-        util_write_story(story,cat)
+            #print('[{0}]'.format(_story.title))
+            # write contents to file
+            
+            util_write_story(story,cat)
     """
     #print(link)
     soup = get_soup(link)
@@ -255,13 +259,15 @@ def util_write_stories(stories,prefixes,category):
 
 # MAIN
 def doGetCats(category, catnum):
-    
+    page_links = []
     # get count of pages
     max_page = get_max_pages(category)
-    #print(max_page)
+    print(category + ' maxpage: ' + str(max_page))
     # get links to all pages
     #print('Getting links to all pages')
-    page_links = util_get_pages(category,max_page)
+    pls = util_get_pages(category,max_page)
+    for l in pls:
+        page_links.append(l)
     #print(page_links)
     # get all Story objects
     #stories = get_stories(page_links, category_names[catnum])
@@ -273,14 +279,14 @@ def doGetCats(category, catnum):
     """
     # get links to all stories
     #print('Getting links to all stories')
-    story_links = get_story_links(page_links)
+    #story_links = get_story_links(page_links)
     print("lenpagelinks: " + str(len(page_links)))
     #print('Acquiring stories')
     i = 1
     # for each story
     while len(page_links) >= 1:
     
-        if threading.activeCount()<=128: 
+        if threading.activeCount()<=256: 
             for link in page_links:
         
              
@@ -290,7 +296,7 @@ def doGetCats(category, catnum):
                 t.start()   
         else:
             #print(str(threading.activeCount()) + ' threads...,, lenpage_links: ' + str(len(story_links)))
-            sleep(4)
+            sleep(0.1)
     """
     while len(story_links) >= 1:
         for link in story_links:
@@ -315,11 +321,24 @@ if __name__ == '__main__':
     categories, category_names = get_categ_links()
     # create folders for each category
     #print('Getting directories for categories')
-    print(len(categories))
+    
+    items = []
+    items2 = []
+    index = -1
     for item in category_names:
+        index = index + 1
         if not os.path.exists(item):
+        
+            print(item)
+            items2.append(categories[index]) 
+            items.append(item)
             os.makedirs(item)
+        
+    print(items2)
+    categories = items2
+    category_names = items
     catnum = -1
+    print('threadcount: ' + str(threading.activeCount()))
     for category in categories:
         catnum = catnum + 1
         t = threading.Thread(target=doGetCats, args=(category,catnum,))
@@ -327,5 +346,5 @@ if __name__ == '__main__':
         t.start()
     while threading.activeCount()>=2:
         print('threadcount: ' + str(threading.activeCount()))
-        sleep(4)
+        sleep(10)
         
