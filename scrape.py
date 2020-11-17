@@ -37,6 +37,7 @@ class Story(object):
         self.author_home = self.meta.find('span',{'class' : 'b-sli-author'}).find('a')['href']
         # number of pages
         self.page_count = get_max_pages(self.link,suffix='')
+        #print(self.page_count)
         # rating as float
         self.rating_as_float = 0.5 * math.ceil(2.0 * float(self.rating))
         # fetch content
@@ -74,7 +75,15 @@ class Story(object):
 
 def get_soup(url=BASE_URL):
     # raw content
-    content = requests.get(url).content
+    done = False
+    while done == False:
+        try:
+            content = requests.get(url).content
+        except:
+            sleep(1)
+            abc=123
+        finally:
+            done = True
     # soup
     return bsp(content,"lxml")
 
@@ -100,27 +109,74 @@ def get_max_pages(url,suffix='/1-page'):
     else:
         return int(1)
 
+import os.path
+from os import path
+
 # Get page links in each category
 def util_get_pages(url, max_page):
     return ['{}/{}-page'.format(url,i) for i in range(1,max_page+1)]
 
 # Get Story objects
-def get_stories(page_links):
-    stories = []
+import threading
+stories = []
+def doGetStories(link, cat):
+    soup = get_soup(link)
+    # find all matching tags
+    tags = soup.findAll('div', { 'class' : 'b-sl-item-r'})
+    for tag in tags:
+        story = Story(tag)
+        #print('[{0}]'.format(story))
+        #_story = get_contents(story.link)
+        #print('[{0}]'.format(story))
+        # append to list
+        #stories.append(story)
+        #_story = get_contents(link)
+
+        #print('[{0}]'.format(_story.title))
+        # write contents to file
+        
+        util_write_story(story,cat)
+    """
+    #print(link)
+    soup = get_soup(link)
+    # find all matching tags
+    tags = soup.findAll('div', { 'class' : 'b-sl-item-r'})
+    #print(tags)
+    #sleep(100)
+    for tag in tags:
+    
+        # create object
+        story = Story(tag)
+        _story = get_contents(story)
+        print('[{0}]'.format(story))
+        # append to list
+        #stories.append(story)
+        #_story = get_contents(link)
+
+        #print('[{0}]'.format(_story.title))
+        # write contents to file
+        util_write_story(_story,cat)
+    #i += 1
+    """
+#i += 1
+            
+from time import sleep
+def get_stories(page_links, cat):
+    global stories
+    
     i = 1
     # for each page link
-    for link in page_links:
-        soup = get_soup(link)
-        # find all matching tags
-        tags = soup.findAll('div', { 'class' : 'b-sl-item-r'})
-        for tag in tags:
-            # create object
-            story = Story(tag)
-            print('[{0}] {1}'.format(i,story))
-            # append to list
-            stories.append(story)
-            i += 1
-    return stories
+    while len(page_links) >= 1:
+        for link in page_links:
+            if threading.activeCount()<=256:  
+                page_links.remove(link)
+                t = threading.Thread(target=doGetStories, args=(link,cat,))
+                t.daemon = True
+                t.start()   
+            else:
+                #print(str(threading.activeCount()) + ' threads...')
+                sleep(4)
+    
 
 # Get story links from each page in each category
 def get_story_links(page_links):
@@ -132,8 +188,9 @@ def get_story_links(page_links):
             _href = item.get('href')
             if '/s/' in _href and _href not in links:
                 links.append(_href)
-                print('[{0}] {1}'.format(i,_href))
+                #print('[{0}] {1}'.format(i,_href))
                 i += 1
+    #print(links)
     return links
 
 def util_get_tag(item_as_str,tag):
@@ -144,6 +201,7 @@ def util_get_href(item_as_str):
     
 # Get title, content, author name, author link and TODO(comments) of a story
 def get_contents(story):
+    #try:
     soup = get_soup(story)
     header = str(soup.find_all('div',{'class' : 'b-story-header'})[0])
     _heading = str(util_get_tag(header,'h1')[0]).replace('/','')
@@ -154,16 +212,24 @@ def get_contents(story):
     max_pages = get_max_pages(story,suffix='')
     _content = ''
     for i in range(1,max_pages+1):
-        soup = get_soup(story + '?page={}'.format(i))
-        content  = soup.find_all('div',{ 'class' : 'b-story-body-x'})[0]
-        # inplace sort
-        _content += str(content)
-
+        try:
+            soup = get_soup(story + '?page={}'.format(i))
+            content  = soup.find_all('div',{ 'class' : 'b-story-body-x'})[0]
+            # inplace sort
+            _content += str(content)
+        except Exception as e:
+            print(e)    
+            abc=123
     return Story(_heading, _content, _author, _author_home)
-
+    #except Exception as e:
+    #    print(e)
+    #    abc=123
 # write story to file
+import codecs
+
 def util_write_story(story,rel_path):
-    with open('{0}/{1}.html'.format(rel_path,story.title),'w') as f:
+    with codecs.open(('{0}/{1}.html'.format(rel_path,story.title.replace('/','')).replace("'",'').replace('"','').replace('?','')),'w', "utf-8") as f:
+        
         f.write('<h1>{}</h1>\n'.format(story.title))
         f.write('<i><a href={0}>{1}</a></i>\n'.format(story.author_home,story.author))
         f.write('{}\n'.format(story.content))
@@ -188,41 +254,78 @@ def util_write_stories(stories,prefixes,category):
     
 
 # MAIN
-if __name__ == '__main__':
-    categories, category_names = get_categ_links()
-    # create folders for each category
-    print('Getting directories for categories')
-    '''
-    for item in category_names:
-        if not os.path.exists(item):
-            os.makedirs(item)
-    '''
-    category = categories[0]
+def doGetCats(category, catnum):
+    
     # get count of pages
-    max_page = get_max_pages(categories[0])
+    max_page = get_max_pages(category)
+    #print(max_page)
     # get links to all pages
-    print('Getting links to all pages')
-    page_links = util_get_pages(categories[0],max_page)
+    #print('Getting links to all pages')
+    page_links = util_get_pages(category,max_page)
+    #print(page_links)
     # get all Story objects
-    stories = get_stories(page_links)
+    #stories = get_stories(page_links, category_names[catnum])
     # separate stories into batches based on page count
+    """
     batches = get_batches(stories)
     print('Len : {}'.format(len(stories)))
     print('Batches : {}'.format(batches))
-
-    '''
+    """
     # get links to all stories
-    print('Getting links to all stories')
+    #print('Getting links to all stories')
     story_links = get_story_links(page_links)
-
-    print('Acquiring stories')
+    print("lenpagelinks: " + str(len(page_links)))
+    #print('Acquiring stories')
     i = 1
     # for each story
-    for story in story_links:
+    while len(page_links) >= 1:
+    
+        if threading.activeCount()<=128: 
+            for link in page_links:
+        
+             
+                page_links.remove(link)
+                t = threading.Thread(target=doGetStories, args=(link,category_names[catnum],))
+                t.daemon = True
+                t.start()   
+        else:
+            #print(str(threading.activeCount()) + ' threads...,, lenpage_links: ' + str(len(story_links)))
+            sleep(4)
+    """
+    while len(story_links) >= 1:
+        for link in story_links:
+        
+            if threading.activeCount()<=256:  
+                story_links.remove(link)
+                t = threading.Thread(target=doGetStories, args=(link,category_names[catnum],))
+                t.daemon = True
+                t.start()   
+            else:
+                print(str(threading.activeCount()) + ' threads...,, lenstorylinks: ' + str(len(story_links)))
+                sleep(4)
+        
         # get contents
         _story = get_contents(story)
         print('[{0}] {1}'.format(i,_story.title))
         # write contents to file
         util_write_story(_story,category_names[0])
         i += 1
-    '''
+    """
+if __name__ == '__main__':
+    categories, category_names = get_categ_links()
+    # create folders for each category
+    #print('Getting directories for categories')
+    print(len(categories))
+    for item in category_names:
+        if not os.path.exists(item):
+            os.makedirs(item)
+    catnum = -1
+    for category in categories:
+        catnum = catnum + 1
+        t = threading.Thread(target=doGetCats, args=(category,catnum,))
+        t.daemon = True
+        t.start()
+    while threading.activeCount()>=2:
+        print('threadcount: ' + str(threading.activeCount()))
+        sleep(4)
+        
